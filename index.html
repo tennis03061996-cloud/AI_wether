@@ -3,450 +3,165 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>全国対応 気象AIガイダンス補正＆3時間予報ツール</title>
-    
-    <!-- ご指定のアイコン設定（Gemini選定：気象予報・AIダッシュボード風） -->
+    <title>独自AI 予測アセンブラ (NWP + 観測)</title>
+    <!-- ご指定のアイコン設定 -->
     <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/3093/3093395.png" type="image/png">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3093/3093395.png">
 
-    <!-- Tailwind CSS (UIデザイン用) -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- TensorFlow.js (AIバイアス補正・予測用) -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-    <!-- Chart.js (変化傾向のざっくり可視化用) -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        body { background-color: #f0f4f8; font-family: 'Helvetica Neue', Arial, sans-serif; }
+        body { background-color: #f8fafc; font-family: 'Helvetica Neue', Arial, sans-serif; }
         .spinner {
-            border: 4px solid rgba(255, 255, 255, 0.3);
-            border-top: 4px solid #ffffff;
+            border: 3px solid rgba(59, 130, 246, 0.3);
+            border-top: 3px solid #3b82f6;
             border-radius: 50%;
-            width: 24px;
-            height: 24px;
+            width: 20px;
+            height: 20px;
             animation: spin 1s linear infinite;
             display: none;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .table-scroll { overflow-x: auto; white-space: nowrap; }
-        th, td { min-width: 80px; text-align: center; }
-        
-        /* スクロールバーのカスタマイズ */
-        ::-webkit-scrollbar { height: 8px; }
-        ::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
     </style>
 </head>
 <body class="text-gray-800">
 
-<div class="max-w-7xl mx-auto p-4 md:p-6">
-    <header class="mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-        <div>
-            <h1 class="text-2xl md:text-3xl font-bold text-indigo-900">AI気象ガイダンス・3時間予報支援ツール</h1>
-            <p class="text-gray-500 mt-1 text-sm md:text-base">気象庁公式データ × TensorFlow.js 局地バイアス補正</p>
-        </div>
-        
-        <div class="flex items-center gap-3 w-full md:w-auto">
-            <select id="areaSelector" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full md:w-64 p-2.5">
-                <!-- 主要な気象官署のエリアコード -->
-                <option value="016000">北海道 (札幌)</option>
-                <option value="040000">宮城県 (仙台)</option>
-                <option value="130000">東京都 (東京)</option>
-                <option value="150000">新潟県 (新潟)</option>
-                <option value="230000">愛知県 (名古屋)</option>
-                <option value="270000" selected>大阪府 (大阪)</option>
-                <option value="340000">広島県 (広島)</option>
-                <option value="390000">高知県 (高知)</option>
-                <option value="400000">福岡県 (福岡)</option>
-                <option value="471000">沖縄県 (那覇)</option>
-            </select>
-            <button id="fetchDataBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-lg transition duration-200 flex items-center gap-2 whitespace-nowrap">
-                <span id="btnText">データ取得＆AI補正</span>
-                <div id="loadingSpinner" class="spinner"></div>
-            </button>
-        </div>
+<div class="max-w-5xl mx-auto p-6">
+    <header class="mb-8 border-b-2 border-blue-500 pb-4">
+        <h1 class="text-3xl font-bold text-blue-900">独自AI 予測アセンブラ</h1>
+        <p class="text-gray-600 mt-2">最新の「数値予報資料」と「実況データ」を入力してAIに予測を組み立てさせます。</p>
     </header>
 
-    <div id="dashboard" class="hidden space-y-6">
-        
-        <!-- 上段：概要とトレンドグラフ（変化傾向をざっくり見る） -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <!-- 発表情報まとめ -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 lg:col-span-1">
-                <h2 class="text-lg font-bold text-gray-700 border-b pb-2 mb-4">予報概要 (気象庁発表ベース)</h2>
-                <div id="overviewContent" class="space-y-4">
-                    <!-- 動的に生成 -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <!-- 入力フォームエリア -->
+        <div class="bg-white p-6 rounded-xl shadow border border-gray-200">
+            <h2 class="text-xl font-bold mb-4 text-gray-700">最新データの入力</h2>
+            
+            <div class="space-y-4">
+                <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <h3 class="font-bold text-blue-800 mb-2">📡 最新の数値予報資料 (NWP)</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm text-gray-600">海面気圧 (hPa)</label>
+                            <input type="number" id="nwp_pressure" value="1010" class="w-full border rounded p-2 mt-1">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-600">予想気温 (℃)</label>
+                            <input type="number" id="nwp_temp" value="22.5" class="w-full border rounded p-2 mt-1">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm text-gray-600">予想降水確率 (%)</label>
+                            <input type="number" id="nwp_pop" value="30" class="w-full border rounded p-2 mt-1">
+                        </div>
+                    </div>
                 </div>
-            </div>
 
-            <!-- AI補正済みトレンドグラフ -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 lg:col-span-2">
-                <div class="flex justify-between items-center border-b pb-2 mb-4">
-                    <h2 class="text-lg font-bold text-gray-700">明後日までの気温・降水確率トレンド (AI補正済)</h2>
-                    <span class="text-xs font-bold bg-indigo-100 text-indigo-800 px-2 py-1 rounded">3時間ステップ</span>
+                <div class="bg-green-50 p-4 rounded-lg border border-green-100">
+                    <h3 class="font-bold text-green-800 mb-2">📍 最新の実況データ (SFC_H / AMD_D)</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm text-gray-600">現在の実況気温 (℃)</label>
+                            <input type="number" id="obs_current_temp" value="23.0" class="w-full border rounded p-2 mt-1">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-600">現在の実況風速 (m/s)</label>
+                            <input type="number" id="obs_current_wind" value="3.5" class="w-full border rounded p-2 mt-1">
+                        </div>
+                    </div>
                 </div>
-                <div class="relative h-64 w-full">
-                    <canvas id="trendChart"></canvas>
-                </div>
+
+                <button id="predictBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2 transition">
+                    <span id="btnText">このデータでAI予測を組み立てる</span>
+                    <div id="loadingSpinner" class="spinner border-t-white"></div>
+                </button>
+                <div id="errorMsg" class="text-red-500 text-sm hidden">Pythonサーバー(127.0.0.1:5000)に接続できません。起動しているか確認してください。</div>
             </div>
         </div>
 
-        <!-- 下段：3時間ごとの詳細予報テーブル（予報作業の補助資料用） -->
-        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h2 class="text-lg font-bold text-gray-700 border-b pb-2 mb-4">AIガイダンス 3時間詳細予報 (明後日まで)</h2>
-            <div class="table-scroll pb-2">
-                <table class="w-full text-sm text-left text-gray-500">
-                    <thead class="text-xs text-gray-700 uppercase bg-gray-100">
-                        <tr id="tableHeaderRow">
-                            <th scope="col" class="px-4 py-3 bg-gray-200 sticky left-0 z-10">要素 / 時間</th>
-                            <!-- 動的に時間が入る -->
-                        </tr>
-                    </thead>
-                    <tbody id="tableBody">
-                        <tr class="bg-white border-b" id="rowWeather">
-                            <th scope="row" class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap bg-gray-50 sticky left-0 z-10">天気</th>
-                        </tr>
-                        <tr class="bg-white border-b" id="rowTemp">
-                            <th scope="row" class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap bg-gray-50 sticky left-0 z-10">気温 (℃)</th>
-                        </tr>
-                        <tr class="bg-white border-b" id="rowPop">
-                            <th scope="row" class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap bg-gray-50 sticky left-0 z-10">降水確率 (%)</th>
-                        </tr>
-                        <tr class="bg-white" id="rowWind">
-                            <th scope="row" class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap bg-gray-50 sticky left-0 z-10">風速補正 (m/s)</th>
-                        </tr>
-                    </tbody>
-                </table>
+        <!-- 予測結果エリア -->
+        <div class="bg-white p-6 rounded-xl shadow border border-gray-200 flex flex-col">
+            <h2 class="text-xl font-bold mb-4 text-gray-700">AIによる詳細予測結果 (数時間後)</h2>
+            
+            <div id="resultBox" class="flex-grow flex flex-col justify-center hidden">
+                <div class="grid grid-cols-1 gap-4">
+                    <div class="bg-gray-50 border p-4 rounded-lg flex justify-between items-center">
+                        <span class="text-gray-500 font-bold">AI補正 予想気温</span>
+                        <div class="text-3xl font-black text-gray-800"><span id="resTemp">-</span><span class="text-lg font-normal ml-1">℃</span></div>
+                    </div>
+                    <div class="bg-gray-50 border p-4 rounded-lg flex justify-between items-center">
+                        <span class="text-gray-500 font-bold">AI補正 降水確率</span>
+                        <div class="text-3xl font-black text-blue-600"><span id="resPop">-</span><span class="text-lg font-normal ml-1">%</span></div>
+                    </div>
+                    <div class="bg-gray-50 border p-4 rounded-lg flex justify-between items-center">
+                        <span class="text-gray-500 font-bold">推定最大風速</span>
+                        <div class="text-3xl font-black text-gray-800"><span id="resWind">-</span><span class="text-lg font-normal ml-1">m/s</span></div>
+                    </div>
+                </div>
+                <div class="mt-6 text-sm text-blue-600 bg-blue-50 p-3 rounded text-center font-bold" id="statusMsg"></div>
             </div>
-            <p class="text-xs text-gray-400 mt-3 text-right">※フロントエンドAIモデルによる擬似的な局地バイアス補正を含みます。公式発表とは異なります。</p>
+            
+            <div id="waitBox" class="flex-grow flex items-center justify-center text-gray-400">
+                左のフォームからデータを入力してください
+            </div>
         </div>
-
     </div>
-
-    <!-- エラー表示用 -->
-    <div id="errorMessage" class="hidden mt-6 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-sm"></div>
 </div>
 
 <script>
-/**
- * 即時実行関数 (IIFE) でスコープを限定。
- * 変数や関数のグローバル汚染を防ぎ、他のスクリプトとの競合を完全に回避します。
- */
 (function() {
-    // UI要素の取得
-    const btn = document.getElementById('fetchDataBtn');
-    const btnText = document.getElementById('btnText');
+    const btn = document.getElementById('predictBtn');
     const spinner = document.getElementById('loadingSpinner');
-    const areaSelector = document.getElementById('areaSelector');
-    const dashboard = document.getElementById('dashboard');
-    const errorMessage = document.getElementById('errorMessage');
-    
-    // グラフインスタンス保持用変数
-    let weatherChart = null;
+    const btnText = document.getElementById('btnText');
+    const resultBox = document.getElementById('resultBox');
+    const waitBox = document.getElementById('waitBox');
+    const errorMsg = document.getElementById('errorMsg');
 
-    /**
-     * AIモデルの初期化（局地バイアス補正用モデル）
-     * 本来はPHP等を介してSFC_HやAMD_Dなどの実況SQLDBから重みを学習させますが、
-     * 今回はブラウザ上でリアルタイム推論するための軽量モデルを定義します。
-     */
-    let aiModel = null;
-    async function initAIModel() {
-        if (aiModel) return aiModel;
-        
-        aiModel = tf.sequential();
-        // 入力: [時間帯(0-24), JMA生気温, JMA生降水確率]
-        aiModel.add(tf.layers.dense({units: 16, activation: 'relu', inputShape: [3]}));
-        aiModel.add(tf.layers.dense({units: 16, activation: 'relu'}));
-        // 出力: [補正後気温, 補正後降水確率, 推定風速]
-        aiModel.add(tf.layers.dense({units: 3}));
-        aiModel.compile({optimizer: 'adam', loss: 'meanSquaredError'});
-        
-        // 擬似的な事前学習（日中の気温上昇バイアス、夜間の放射冷却バイアスなどを学習）
-        const xs = [];
-        const ys = [];
-        for(let i=0; i<100; i++) {
-            const h = Math.random() * 24;
-            const t = 10 + Math.random() * 20;
-            const p = Math.random() * 100;
-            
-            // 昼(12-15時)は気温を高めに、夜(3-6時)は低めに補正する法則を教え込む
-            let t_bias = t;
-            if(h >= 12 && h <= 15) t_bias += 1.5; 
-            if(h >= 3 && h <= 6) t_bias -= 1.0;
-            
-            // 風速は日中に上がりやすい法則
-            let w_est = (h >= 9 && h <= 18) ? 3.0 + Math.random()*4 : 1.5 + Math.random()*2;
-
-            xs.push([h, t, p]);
-            ys.push([t_bias, p, w_est]); // 降水確率はひとまず維持
-        }
-        
-        const xTensor = tf.tensor2d(xs);
-        const yTensor = tf.tensor2d(ys);
-        await aiModel.fit(xTensor, yTensor, { epochs: 20, verbose: 0 });
-        
-        xTensor.dispose();
-        yTensor.dispose();
-        
-        return aiModel;
-    }
-
-    /**
-     * AIによるデータ補正実行関数
-     */
-    function applyAICorrection(hour, rawTemp, rawPop) {
-        // nullの補完処理
-        const t = rawTemp !== null ? rawTemp : 20.0; 
-        const p = rawPop !== null ? rawPop : 0;
-        
-        return tf.tidy(() => {
-            const input = tf.tensor2d([[hour, t, p]]);
-            const pred = aiModel.predict(input).dataSync();
-            return {
-                temp: pred[0].toFixed(1),
-                pop: Math.max(0, Math.min(100, Math.round(pred[1]))),
-                wind: Math.max(0, pred[2]).toFixed(1)
-            };
-        });
-    }
-
-    /**
-     * メイン処理：データ取得とUI描画
-     */
     btn.addEventListener('click', async () => {
-        // UIロード状態
         btn.disabled = true;
         spinner.style.display = 'block';
-        btnText.innerText = 'データ取得中...';
-        errorMessage.classList.add('hidden');
-        dashboard.classList.add('hidden');
+        btnText.innerText = 'AIで推論中...';
+        errorMsg.classList.add('hidden');
+
+        // 入力値の取得
+        const payload = {
+            nwp_pressure: document.getElementById('nwp_pressure').value,
+            nwp_temp: document.getElementById('nwp_temp').value,
+            nwp_pop: document.getElementById('nwp_pop').value,
+            obs_current_temp: document.getElementById('obs_current_temp').value,
+            obs_current_wind: document.getElementById('obs_current_wind').value
+        };
 
         try {
-            const areaCode = areaSelector.value;
-            // 気象庁公式JSON APIエンドポイント
-            const jmaUrl = `https://www.jma.go.jp/bosai/forecast/data/forecast/${areaCode}.json`;
-            
-            const response = await fetch(jmaUrl);
-            if (!response.ok) throw new Error(`気象庁データの取得に失敗しました (HTTP ${response.status})`);
+            // Pythonバックエンドへリクエスト送信
+            const response = await fetch('http://127.0.0.1:5000/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error('Network response was not ok');
             
             const data = await response.json();
-            
-            // AIモデルの準備
-            btnText.innerText = 'AI補正モデル計算中...';
-            await initAIModel();
 
-            // データのパースと3時間間隔へのマッピング
-            processAndRenderData(data);
-            
-            // UI表示
-            dashboard.classList.remove('hidden');
+            // 結果の反映
+            document.getElementById('resTemp').innerText = data.predicted_temp;
+            document.getElementById('resPop').innerText = data.predicted_pop;
+            document.getElementById('resWind').innerText = data.predicted_wind;
+            document.getElementById('statusMsg').innerText = data.message;
+
+            waitBox.classList.add('hidden');
+            resultBox.classList.remove('hidden');
 
         } catch (error) {
-            console.error(error);
-            errorMessage.innerText = `エラーが発生しました: ${error.message}`;
-            errorMessage.classList.remove('hidden');
+            console.error('Error:', error);
+            errorMsg.classList.remove('hidden');
         } finally {
-            // ロード状態解除
             btn.disabled = false;
             spinner.style.display = 'none';
-            btnText.innerText = 'データ取得＆AI補正';
+            btnText.innerText = 'このデータでAI予測を組み立てる';
         }
     });
-
-    /**
-     * 取得したデータをパースし、明後日までの3時間間隔データに正規化して描画
-     */
-    function processAndRenderData(jmaData) {
-        // JMAのJSONは独特の構造（data[0]に日々/大まか、data[1]に詳細がある場合がある）
-        // 確実に動かすため、現在時刻から明後日までの3時間グリッドを作成し、データをマッピングする
-        
-        const now = new Date();
-        const timeline = []; // 3時間ごとのタイムライン配列
-        
-        // 直近の3時間の倍数に丸める (例: 14時 -> 12時, 17時 -> 15時)
-        let startTime = new Date(now);
-        startTime.setHours(Math.floor(now.getHours() / 3) * 3, 0, 0, 0);
-
-        // 明後日の21時まで生成 (最大約72時間 = 24ステップ)
-        for (let i = 0; i <= 24; i++) {
-            const t = new Date(startTime.getTime() + (i * 3 * 60 * 60 * 1000));
-            // 明後日を超えたらストップ
-            const diffDays = Math.floor((t.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-            if(diffDays > 2) break; 
-            
-            timeline.push({
-                dateObj: t,
-                dayLabel: t.getDate() + '日',
-                hourLabel: t.getHours().toString().padStart(2, '0') + ':00',
-                hour: t.getHours(),
-                // 以下は仮の初期値（あとでJMAデータから埋める）
-                weather: '晴',
-                rawTemp: 15 + Math.random() * 10, // 本来はスプライン補間等で埋める
-                rawPop: 0
-            });
-        }
-
-        // --- 概要情報の描画 ---
-        const overviewContainer = document.getElementById('overviewContent');
-        overviewContainer.innerHTML = '';
-        
-        const weathers = jmaData[0].timeSeries[0].areas[0].weathers;
-        const targetDays = jmaData[0].timeSeries[0].timeDefines;
-        
-        targetDays.forEach((timeDef, idx) => {
-            if(idx > 2) return; // 明後日まで
-            const d = new Date(timeDef);
-            const dayStr = d.getDate() == now.getDate() ? '今日' : (d.getDate() == now.getDate()+1 ? '明日' : '明後日');
-            
-            // JMAの天気コードを簡略化（テキストベース）
-            let wText = weathers[idx] || "不明";
-            // ざっくり天気をタイムラインにマッピングするため保持
-            timeline.forEach(step => {
-                if(step.dateObj.getDate() === d.getDate()) {
-                    if(wText.includes('雨')) step.weather = '雨 ☔️';
-                    else if(wText.includes('曇')) step.weather = '曇 ☁️';
-                    else step.weather = '晴 ☀️';
-                }
-            });
-
-            overviewContainer.innerHTML += `
-                <div class="flex justify-between items-center bg-gray-50 p-3 rounded border">
-                    <span class="font-bold text-gray-700">${dayStr} (${d.getDate()}日)</span>
-                    <span class="text-blue-800 font-medium">${wText}</span>
-                </div>
-            `;
-        });
-
-        // --- 降水確率・気温のマッピング（本来は時系列配列から最近傍探索でマッピング） ---
-        // ※今回はコピペで確実に動かすため、乱数ではなく「日変化」を描く関数でJMAデータをシミュレートして補間します
-        timeline.forEach(step => {
-            // ベース気温：日中高く、夜低いカーブ
-            step.rawTemp = 18 + 5 * Math.sin((step.hour - 8) * Math.PI / 12);
-            // 天気に応じたPoP
-            step.rawPop = step.weather.includes('雨') ? 60 + Math.random() * 30 : (step.weather.includes('曇') ? 20 : 0);
-            
-            // ここで AIガイダンス補正 を適用！
-            const corrected = applyAICorrection(step.hour, step.rawTemp, step.rawPop);
-            step.aiTemp = parseFloat(corrected.temp);
-            step.aiPop = corrected.pop;
-            step.aiWind = parseFloat(corrected.wind);
-        });
-
-        // --- テーブルの描画 ---
-        const thRow = document.getElementById('tableHeaderRow');
-        const rWeather = document.getElementById('rowWeather');
-        const rTemp = document.getElementById('rowTemp');
-        const rPop = document.getElementById('rowPop');
-        const rWind = document.getElementById('rowWind');
-
-        // ヘッダーと行のリセット (最初の見出しカラムは残す)
-        thRow.innerHTML = '<th scope="col" class="px-4 py-3 bg-gray-200 sticky left-0 z-10 w-32 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">要素 / 時間</th>';
-        rWeather.innerHTML = '<th scope="row" class="px-4 py-3 font-bold text-gray-700 whitespace-nowrap bg-gray-100 sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">天気</th>';
-        rTemp.innerHTML = '<th scope="row" class="px-4 py-3 font-bold text-gray-700 whitespace-nowrap bg-gray-100 sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">AI気温 (℃)</th>';
-        rPop.innerHTML = '<th scope="row" class="px-4 py-3 font-bold text-gray-700 whitespace-nowrap bg-gray-100 sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">AI降水確率 (%)</th>';
-        rWind.innerHTML = '<th scope="row" class="px-4 py-3 font-bold text-gray-700 whitespace-nowrap bg-gray-100 sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">推定風速 (m/s)</th>';
-
-        let currentDay = '';
-        timeline.forEach(step => {
-            // 日付が変わった時だけ日付ラベルを表示する工夫
-            let timeLabel = step.hourLabel;
-            if (step.dayLabel !== currentDay) {
-                timeLabel = `<span class="text-indigo-600 font-bold">${step.dayLabel}</span><br>${step.hourLabel}`;
-                currentDay = step.dayLabel;
-            }
-
-            thRow.innerHTML += `<th class="px-4 py-3 font-normal border-l">${timeLabel}</th>`;
-            rWeather.innerHTML += `<td class="px-4 py-3 border-l text-lg">${step.weather.split(' ')[1] || step.weather}</td>`;
-            
-            // 気温の色分け (直感的にわかりやすく)
-            let tempColor = 'text-gray-700';
-            if(step.aiTemp >= 30) tempColor = 'text-red-600 font-bold';
-            else if(step.aiTemp <= 5) tempColor = 'text-blue-600 font-bold';
-            rTemp.innerHTML += `<td class="px-4 py-3 border-l ${tempColor}">${step.aiTemp.toFixed(1)}</td>`;
-            
-            // 降水確率の色分け
-            let popColor = step.aiPop >= 50 ? 'text-blue-600 font-bold' : 'text-gray-600';
-            rPop.innerHTML += `<td class="px-4 py-3 border-l ${popColor}">${step.aiPop}</td>`;
-            
-            rWind.innerHTML += `<td class="px-4 py-3 border-l text-gray-600">${step.aiWind.toFixed(1)}</td>`;
-        });
-
-        // --- グラフの描画 ---
-        drawChart(timeline);
-    }
-
-    /**
-     * Chart.js によるトレンド可視化（読み込み速度と再描画の競合に配慮）
-     */
-    function drawChart(timeline) {
-        const ctx = document.getElementById('trendChart').getContext('2d');
-        
-        // 既存のチャートがあれば破棄（カクつき・競合防止）
-        if (weatherChart) {
-            weatherChart.destroy();
-        }
-
-        const labels = timeline.map(s => s.hourLabel);
-        const tempValues = timeline.map(s => s.aiTemp);
-        const popValues = timeline.map(s => s.aiPop);
-
-        weatherChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'AI補正 気温 (℃)',
-                        data: tempValues,
-                        borderColor: '#ef4444', // 赤系
-                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                        borderWidth: 2,
-                        fill: true,
-                        yAxisID: 'yTemp',
-                        tension: 0.4
-                    },
-                    {
-                        label: 'AI降水確率 (%)',
-                        data: popValues,
-                        type: 'bar',
-                        backgroundColor: 'rgba(59, 130, 246, 0.4)', // 青系
-                        borderColor: 'rgba(59, 130, 246, 1)',
-                        borderWidth: 1,
-                        yAxisID: 'yPop'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    mode: 'index',
-                    intersect: false,
-                },
-                scales: {
-                    x: {
-                        grid: { display: false }
-                    },
-                    yTemp: {
-                        type: 'linear',
-                        display: true,
-                        position: 'left',
-                        title: { display: true, text: '気温 (℃)' }
-                    },
-                    yPop: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        min: 0,
-                        max: 100,
-                        title: { display: true, text: '降水確率 (%)' },
-                        grid: { drawOnChartArea: false } // グリッド線の重複を防ぐ
-                    }
-                }
-            }
-        });
-    }
 })();
 </script>
 </body>
